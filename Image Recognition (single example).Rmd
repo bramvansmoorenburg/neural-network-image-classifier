@@ -1,0 +1,168 @@
+---
+title: "Image Recognizer (one example)"
+author: "Bram van Smoorenburg"
+date: "4 April 2018"
+output: html_document
+---
+
+basics
+```{r}
+nodes=c(50,50)
+biases=10
+setBW=TRUE
+```
+
+lirbraries
+```{r}
+library(png)
+library(xlsx)
+library(faraway)
+```
+
+reading in one image
+```{r}
+homedir=getwd()
+setwd("./training")
+files=list.files()
+filenum=1
+img=readPNG(paste0("./",files[filenum]))
+if (setBW) {
+  img=apply(img,c(1,2),mean)
+}
+img=matrix(img,ncol = 1)
+```
+
+reading labels
+```{r}
+label=as.matrix(read.xlsx("./training.labels.xlsx",1,header = FALSE))
+answer=unique(label[,2])
+```
+
+random starting weights
+```{r}
+set.seed(20180722)
+weight=rep(list(0),length(nodes)+1)
+weight[[1]]=matrix(rnorm(prod(dim(img),nodes[1])),nodes[1])
+weight[[length(weight)]]=matrix(rnorm(nodes[length(nodes)]*length(answer)),length(answer))
+for (a in 2:length(nodes)) {
+  weight[[a]]=matrix(rnorm(nodes[a]*nodes[a-1]),nodes[a])
+}
+```
+
+random starting biases
+```{r}
+bias=rep(list(0),length(nodes)+1)
+bias[[length(bias)]]=matrix(-rexp(length(answer),1/biases),nrow = length(answer))
+for (a in 1:length(nodes)) {
+  bias[[a]]=matrix(-rexp(nodes[a],1/biases),nrow=nodes[a])
+}
+```
+
+network activation
+```{r}
+activation=rep(list(0),length(nodes)+1)
+activation[[1]]=ilogit((weight[[1]]%*%img)+bias[[1]])
+for (a in 2:(length(nodes)+1)) {
+  activation[[a]]=ilogit((weight[[a]]%*%activation[[a-1]])+bias[[a]])
+}
+```
+
+cost
+```{r}
+correct=numeric(length(answer))
+correct[which(answer==label[filenum,2])]=1
+cost=(activation[[length(activation)]]-correct)^2
+```
+
+derivatives
+```{r}
+Dc0ajL=2*(activation[[length(activation)]]-correct)
+#ilogit derivative derivative=exp(x)/(exp(x)+1)^2
+z=(weight[[length(activation)]]%*%activation[[length(activation)-1]])-bias[[length(activation)]]
+DajLzjL=exp(z)/(exp(z)+1)^2
+DzjLwjkL=activation[[length(activation)-1]]
+```
+
+```{r}
+Dw=weight
+Db=bias
+Da=activation
+Da[[length(Da)]]=Dc0ajL
+```
+
+```{r}
+Dw[[length(Dw)]]=t(vapply(1:length(cost),function(x){DzjLwjkL*DajLzjL[x]*Dc0ajL[x]},numeric(length(DzjLwjkL))))
+Db[[length(Db)]]=DajLzjL*Dc0ajL
+```
+
+loop
+```{r}
+for (i in 1:(length(Da)-2)) {
+  Da[[length(Da)-i]]=rowSums(vapply(1:length(Da[[length(Da)+1-i]]),function(x){weight[[length(weight)+1-i]][x,]*DajLzjL[x]*Dc0ajL[x]},numeric(nodes[length(nodes)+1-i])))
+  Dc0ajL=Da[[length(Da)-i]]
+  z=(weight[[length(activation)-i]]%*%activation[[length(activation)-1-i]])-bias[[length(activation)-i]]
+  DajLzjL=exp(z)/(exp(z)+1)^2
+  DzjLwjkL=activation[[length(activation)-1-i]]
+  Dw[[length(Dw)-i]]=t(vapply(1:(length(Da[[length(Da)-i]])),function(x){DzjLwjkL*DajLzjL[x]*Dc0ajL[x]},numeric(length(DzjLwjkL))))
+  Db[[length(Db)-i]]=DajLzjL*Dc0ajL
+}
+```
+
+```{r}
+Da[[1]]=rowSums(vapply(1:length(Da[[2]]),function(x){weight[[2]][x,]*DajLzjL[x]*Dc0ajL[x]},numeric(nodes[1])))
+Dc0ajL=Da[[1]]
+z=(weight[[1]]%*%img)-bias[[1]]
+DajLzjL=exp(z)/(exp(z)+1)^2
+DzjLwjkL=img
+Dw[[1]]=t(vapply(1:(length(Da[[1]])),function(x){DzjLwjkL*DajLzjL[x]*Dc0ajL[x]},numeric(length(DzjLwjkL))))
+Db[[1]]=DajLzjL*Dc0ajL
+```
+
+changing the network
+```{r}
+weight2=lapply(1:length(weight),function(x){weight[[x]]-Dw[[x]]})
+bias2=lapply(1:length(bias),function(x){bias[[x]]-Db[[x]]})
+weight2hist=weight2
+bias2hist=bias2
+```
+
+running again
+```{r}
+activation2=rep(list(0),length(nodes)+1)
+activation2[[1]]=ilogit((weight2[[1]]%*%img)+bias2[[1]])
+for (a in 2:(length(nodes)+1)) {
+  activation2[[a]]=ilogit((weight2[[a]]%*%activation2[[a-1]])+bias2[[a]])
+}
+```
+
+manual backpropping step
+```{r}
+Dc0ajL2=2*(activation2[[length(activation2)]]-correct)
+z2=(weight2[[length(activation2)]]%*%activation2[[length(activation2)-1]])-bias2[[length(activation2)]]
+DajLzjL2=exp(z2)/(exp(z2)+1)^2
+DzjLwjkL2=activation2[[length(activation2)-1]]
+Dw2=weight2
+Db2=bias2
+Da2=activation2
+Da2[[length(Da2)]]=Dc0ajL2
+Dw2[[length(Dw2)]]=t(vapply(1:length(cost),function(x){DzjLwjkL2*DajLzjL2[x]*Dc0ajL2[x]},numeric(length(DzjLwjkL2))))
+Db2[[length(Db2)]]=DajLzjL2*Dc0ajL2
+for (i in 1:(length(Da2)-2)) {
+  Da2[[length(Da2)-i]]=rowSums(vapply(1:length(Da2[[length(Da2)+1-i]]),function(x){weight2[[length(weight2)+1-i]][x,]*DajLzjL2[x]*Dc0ajL2[x]},numeric(nodes[length(nodes)+1-i])))
+  Dc0ajL2=Da2[[length(Da2)-i]]
+  z2=(weight2[[length(activation2)-i]]%*%activation2[[length(activation2)-1-i]])-bias2[[length(activation2)-i]]
+  DajLzjL2=exp(z2)/(exp(z2)+1)^2
+  DzjLwjkL2=activation2[[length(activation2)-1-i]]
+  Dw2[[length(Dw2)-i]]=t(vapply(1:(length(Da2[[length(Da2)-i]])),function(x){DzjLwjkL2*DajLzjL2[x]*Dc0ajL2[x]},numeric(length(DzjLwjkL2))))
+  Db2[[length(Db2)-i]]=DajLzjL2*Dc0ajL2
+}
+Da2[[1]]=rowSums(vapply(1:length(Da2[[2]]),function(x){weight2[[2]][x,]*DajLzjL2[x]*Dc0ajL2[x]},numeric(nodes[1])))
+Dc0ajL2=Da2[[1]]
+z2=(weight2[[1]]%*%img)-bias2[[1]]
+DajLzjL2=exp(z2)/(exp(z2)+1)^2
+DzjLwjkL2=img
+Dw2[[1]]=t(vapply(1:(length(Da2[[1]])),function(x){DzjLwjkL2*DajLzjL2[x]*Dc0ajL2[x]},numeric(length(DzjLwjkL2))))
+Db2[[1]]=DajLzjL2*Dc0ajL2
+weight2=lapply(1:length(weight),function(x){weight2[[x]]-Dw2[[x]]})
+bias2=lapply(1:length(bias),function(x){bias2[[x]]-Db2[[x]]})
+```

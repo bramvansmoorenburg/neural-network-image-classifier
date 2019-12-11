@@ -1,0 +1,44 @@
+---
+title: "image cropper"
+author: "Bram van Smoorenburg"
+date: "3 January 2019"
+output: html_document
+---
+
+```{r}
+locname="training"
+height=100
+width=100
+BW=FALSE #black-and-white images
+```
+
+```{r}
+library(png)
+```
+
+```{r}
+homedir=getwd()
+imagedir=paste0(homedir,"/",locname)
+cropdir=paste0(homedir,"/cropped images")
+```
+
+```{r}
+dir.create(cropdir)
+suppressMessages(setwd(imagedir))
+filenames=list.files()
+for (i in filenames) {
+  img=readPNG(i)
+  if (!BW) {
+    dims=dim(img)[3]
+    cropimg=rep(list(0),dims)
+    for (a in 1:dims) {
+      cropimg[[a]]=img[,,a]
+      cropimg[[a]]=apply(cropimg[[a]],2,function(x){approx(x,n=height)$y})
+      cropimg[[a]]=apply(cropimg[[a]],1,function(x){approx(x,n=width)$y})
+      cropimg[[a]]=t(cropimg[[a]])
+    }
+    cropimg=array(unlist(cropimg),dim = c(height,width,dims))
+    writePNG(cropimg,paste0(cropdir,"/",i))
+  }
+}
+```
